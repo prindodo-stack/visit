@@ -136,7 +136,6 @@
             const initData = async () => {
                 setLoading(true);
                 try {
-                    // 1. 기본 설정 로드
                     const { data: sData } = await supabaseClient.from('site_settings').select('*').eq('id', 1).single();
                     if (sData) {
                         setBaseSettings({
@@ -145,15 +144,10 @@
                             operatingDays: sData.operating_days || [false, true, true, true, true, true, false]
                         });
                     }
-                    // 2. 휴무일 로드
                     const { data: eDates } = await supabaseClient.from('excluded_dates').select('date_str');
                     if (eDates) setExcludedDates(eDates.map(d => d.date_str));
-                    
-                    // 3. 일자별 개별 설정(Overrides) 로드
                     const { data: oData } = await supabaseClient.from('daily_overrides').select('*');
                     if (oData) setDailyOverrides(oData);
-
-                    // 4. 행사 내역 로드
                     const { data: evData } = await supabaseClient.from('events').select('*').order('event_date', { ascending: true });
                     if (evData) setEvents(evData);
                 } catch (err) { console.error(err); } finally { setLoading(false); }
@@ -192,12 +186,9 @@
                 while (tempDate <= end) {
                     const dateStr = tempDate.toISOString().split('T')[0];
                     const dayIdx = tempDate.getDay();
-                    
-                    // 1. 해당 일자의 개별 설정값 확인
                     const override = dailyOverrides.find(o => o.date_str === dateStr);
                     const currentCapacity = override ? Number(override.capacity) : Number(baseSettings.maxCapacity);
                     const currentBaseMeal = override ? Number(override.base_meal_count) : Number(baseSettings.baseMealCount);
-
                     const isOperating = baseSettings.operatingDays[dayIdx] && !excludedDates.includes(dateStr);
                     const dayEvents = events.filter(e => e.event_date === dateStr);
                     const sumTotal = dayEvents.reduce((s, e) => s + Number(e.total_participants || 0), 0);
@@ -235,11 +226,10 @@
                         operating_days: baseSettings.operating_days
                     }).eq('id', 1);
                     if (error) throw error;
-                    showMsg("전역 설정 저장 완료", "success");
+                    showMsg("기본 설정이 서버에 저장되었습니다.", "success");
                 } catch (err) { showMsg("저장 실패", "error"); } finally { setLoading(false); }
             };
 
-            // 특정 일자 설정 저장
             const handleSaveSpecificOverride = async (e) => {
                 e.preventDefault();
                 setLoading(true);
@@ -250,12 +240,11 @@
                         base_meal_count: Number(specificOverride.baseCount)
                     }]);
                     if (error) throw error;
-                    showMsg(`${specificOverride.date} 설정이 적용되었습니다.`, "success");
+                    showMsg(`${specificOverride.date}의 기준값이 변경되었습니다.`, "success");
                     initData();
                 } catch (err) { showMsg("오류 발생", "error"); } finally { setLoading(false); }
             };
 
-            // 기간/요일별 일괄 설정 저장
             const handleSaveRangeOverride = async (e) => {
                 e.preventDefault();
                 setLoading(true);
@@ -264,7 +253,6 @@
                     const end = new Date(rangeOverride.endDate);
                     const batch = [];
                     const temp = new Date(start);
-
                     while (temp <= end) {
                         const dateStr = temp.toISOString().split('T')[0];
                         const dayIdx = temp.getDay();
@@ -277,22 +265,16 @@
                         }
                         temp.setDate(temp.getDate() + 1);
                     }
-
-                    if (batch.length === 0) {
-                        showMsg("선택된 기간 내 해당하는 요일이 없습니다.", "error");
-                        setLoading(false);
-                        return;
-                    }
-
+                    if (batch.length === 0) { showMsg("선택된 요일이 없습니다.", "error"); setLoading(false); return; }
                     const { error } = await supabaseClient.from('daily_overrides').upsert(batch);
                     if (error) throw error;
-                    showMsg(`${batch.length}개 일자의 설정이 일괄 적용되었습니다.`, "success");
+                    showMsg(`${batch.length}개 일자의 기준값이 일괄 업데이트되었습니다.`, "success");
                     initData();
                 } catch (err) { showMsg("일괄 저장 실패", "error"); } finally { setLoading(false); }
             };
 
             const toggleExcludedDate = async (dateStr) => {
-                if (!isAdmin) { showMsg("관리자 인증이 필요합니다.", "error"); return; }
+                if (!isAdmin) { showMsg("관리 권한이 필요합니다.", "error"); return; }
                 try {
                     if (excludedDates.includes(dateStr)) {
                         await supabaseClient.from('excluded_dates').delete().eq('date_str', dateStr);
@@ -323,7 +305,7 @@
                         }));
                         const { error } = await supabaseClient.from('events').insert(mapped);
                         if (error) throw error;
-                        showMsg(`${mapped.length}건 등록 완료`, "success");
+                        showMsg(`${mapped.length}건의 행사 등록이 완료되었습니다.`, "success");
                         initData();
                         setActiveTab('list');
                     } catch (err) { showMsg("파일 처리 오류", "error"); } finally { setLoading(false); if(fileInputRef.current) fileInputRef.current.value=""; }
@@ -344,7 +326,7 @@
                     }]);
                     if (error) throw error;
                     setFormData({ ...formData, event_name: '', total_participants: 0, meal_participants: 0 });
-                    showMsg("등록 성공", "success");
+                    showMsg("행사 정보가 등록되었습니다.", "success");
                     initData();
                     setActiveTab('list');
                 } catch (err) { showMsg("등록 실패", "error"); } finally { setLoading(false); }
@@ -353,17 +335,17 @@
             const handleAdminLogin = (e) => {
                 e.preventDefault();
                 if (pwInput === ADMIN_PASSWORD) {
-                    setIsAdmin(true); setPwInput(""); showMsg("마스터 권한 활성화", "success");
-                } else { showMsg("비밀번호 오류", "error"); }
+                    setIsAdmin(true); setPwInput(""); showMsg("인증되었습니다.", "success");
+                } else { showMsg("비밀번호가 틀렸습니다.", "error"); }
             };
 
             const deleteEvent = async (id) => {
-                if(!window.confirm("삭제하시겠습니까?")) return;
+                if(!window.confirm("내역을 삭제하시겠습니까?")) return;
                 setLoading(true);
                 try {
                     const { error } = await supabaseClient.from('events').delete().eq('id', id);
                     if (error) throw error;
-                    showMsg("삭제 완료", "success");
+                    showMsg("정보가 삭제되었습니다.", "success");
                     initData();
                 } catch (err) { showMsg("삭제 실패", "error"); } finally { setLoading(false); }
             };
@@ -386,7 +368,7 @@
                         </div>
                     )}
 
-                    {/* 사이드바 - 고정 */}
+                    {/* 사이드바 */}
                     <nav className="w-64 bg-[#1C0770] text-white p-5 flex flex-col shrink-0 z-30 shadow-2xl overflow-y-auto">
                         <div className="mb-8 flex items-center space-x-3 px-1">
                             <div className="p-2 rounded-lg shadow flex items-center justify-center" style={{backgroundColor: COLORS.lime}}>
@@ -399,7 +381,7 @@
                         </div>
                         <div className="space-y-1 flex-1">
                             {[
-                                { id: 'dashboard', icon: 'LayoutDashboard', label: '통계 대시보드' },
+                                { id: 'dashboard', icon: 'LayoutDashboard', label: '현황 모니터링' },
                                 { id: 'list', icon: 'ListOrdered', label: '행사 내역 조회' },
                                 { id: 'add', icon: 'PlusCircle', label: '신규 행사 등록' },
                                 { id: 'admin', icon: 'Settings', label: '시스템 설정' }
@@ -412,14 +394,13 @@
                         </div>
                         <div className="mt-4 p-4 bg-white/5 rounded-xl border border-white/5 flex items-center justify-between">
                             <div className="flex flex-col text-slate-400">
-                                <span className="text-[8px] font-bold uppercase tracking-tight">Access</span>
-                                <span className="text-[10px] font-black text-white">{isAdmin ? 'ADMIN' : 'GUEST'}</span>
+                                <span className="text-[8px] font-bold uppercase tracking-tight">접속 모드</span>
+                                <span className="text-[10px] font-black text-white">{isAdmin ? '관리자 권한' : '일반 모드'}</span>
                             </div>
                             <Icon name="RefreshCcw" size={12} className={`${loading ? 'animate-spin' : ''} text-[#3A9AFF]`} />
                         </div>
                     </nav>
 
-                    {/* 메인 섹션 */}
                     <main className="flex-1 flex flex-col min-w-0">
                         {/* 상단 헤더 */}
                         <header className="bg-white border-b border-slate-100 p-4 px-8 flex flex-col sm:flex-row items-center justify-between gap-4 z-20 shrink-0 shadow-sm">
@@ -441,20 +422,19 @@
                                 <button onClick={() => navigateDate(-1)} className="p-2.5 hover:bg-[#261CC1] transition text-white border-r border-white/10 group">
                                     <Icon name="ChevronLeft" size={24} color="white" />
                                 </button>
-                                <button onClick={() => {setViewDate(new Date()); setViewMode('day');}} className="px-6 py-2.5 text-[10px] font-black text-[#F1FF5E] hover:bg-[#261CC1] transition uppercase tracking-widest border-r border-white/10 active:scale-95">Today</button>
+                                <button onClick={() => {setViewDate(new Date()); setViewMode('day');}} className="px-6 py-2.5 text-[10px] font-black text-[#F1FF5E] hover:bg-[#261CC1] transition uppercase tracking-widest border-r border-white/10 active:scale-95">오늘</button>
                                 <button onClick={() => navigateDate(1)} className="p-2.5 hover:bg-[#261CC1] transition text-white group">
                                     <Icon name="ChevronRight" size={24} color="white" />
                                 </button>
                             </div>
                         </header>
 
-                        {/* 콘텐츠 영역 */}
                         <div className="content-area overflow-y-auto p-6 md:p-8 space-y-6">
                             {activeTab === 'dashboard' && (
                                 <div className="max-w-7xl mx-auto space-y-6 animate-fadeIn pb-8">
                                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
                                         <div className="bg-white p-6 rounded-[2rem] shadow-sm border-b-4 border-[#261CC1] flex flex-col justify-between custom-shadow">
-                                            <p className="text-[10px] font-black text-[#261CC1] uppercase tracking-widest flex items-center gap-2 italic"><Icon name="Users" size={14} color="#261CC1"/> Total Visitors</p>
+                                            <p className="text-[10px] font-black text-[#261CC1] uppercase tracking-widest flex items-center gap-2 italic"><Icon name="Users" size={14} color="#261CC1"/> 총 방문객 합계</p>
                                             <div className="flex items-baseline space-x-1 mt-4">
                                                 <h3 className="text-5xl font-black tracking-tighter text-[#1C0770]">{safeLocaleString(filteredData.summary.total)}</h3>
                                                 <span className="text-slate-300 font-bold text-lg ml-2">명</span>
@@ -470,46 +450,68 @@
                                     </div>
 
                                     <div className="bg-white p-6 rounded-[2.5rem] shadow-sm border border-slate-100 flex flex-col custom-shadow overflow-hidden">
-                                        <div className="flex items-center justify-between mb-6 shrink-0">
-                                            <h3 className="text-xl font-black text-[#1C0770]">운영 상세 현황</h3>
-                                            <div className="flex items-center gap-4 text-[9px] font-black uppercase text-slate-400">
-                                                <div className="flex items-center gap-1.5"><div className="w-2.5 h-2.5 bg-[#261CC1] rounded-full shadow-sm"></div> Guest</div>
-                                                <div className="flex items-center gap-1.5 ml-2"><div className="w-2.5 h-2.5 bg-[#3A9AFF] rounded-full shadow-sm"></div> Meal</div>
-                                                <div className="flex items-center gap-1.5 ml-2"><div className="w-2.5 h-2.5 bg-[#F1FF5E] rounded-full shadow-sm border border-slate-200"></div> Modified</div>
+                                        <div className="flex items-center justify-between mb-8 shrink-0">
+                                            <div className="flex items-center gap-3">
+                                                <div className="w-1.5 h-6 bg-[#261CC1] rounded-full"></div>
+                                                <h3 className="text-xl font-black text-[#1C0770]">운영 상세 현황</h3>
+                                            </div>
+                                            <div className="flex items-center gap-4 text-[9px] font-black uppercase bg-[#f1f5f9] px-4 py-2 rounded-xl">
+                                                <div className="flex items-center gap-1.5"><div className="w-2.5 h-2.5 bg-[#261CC1] rounded-full shadow-sm"></div> 참석</div>
+                                                <div className="flex items-center gap-1.5 ml-2"><div className="w-2.5 h-2.5 bg-[#3A9AFF] rounded-full shadow-sm"></div> 식수</div>
+                                                <div className="flex items-center gap-1.5 ml-2"><div className="w-2.5 h-2.5 bg-[#F1FF5E] rounded-full border border-slate-300"></div> 개별설정</div>
                                             </div>
                                         </div>
                                         
-                                        <div className="overflow-y-auto pr-2 max-h-[450px] space-y-2">
-                                            <div className="grid grid-cols-12 px-6 py-2 text-[9px] font-black text-slate-300 uppercase hidden md:grid tracking-widest sticky top-0 bg-white z-10 border-b border-slate-50 mb-2">
-                                                <div className="col-span-2">Date</div>
-                                                <div className="col-span-2 text-center">Visitors</div>
-                                                <div className="col-span-2 text-center">Meals</div>
-                                                <div className="col-span-2 text-center">Cap / Base</div>
-                                                <div className="col-span-2 text-center">Remaining</div>
-                                                <div className="col-span-2 text-right">Status</div>
+                                        <div className="overflow-y-auto pr-2 max-h-[450px] space-y-3">
+                                            <div className="grid grid-cols-12 px-8 py-3 text-[10px] font-black text-slate-400 uppercase hidden md:grid tracking-widest sticky top-0 bg-white z-10 border-b border-slate-100 mb-2">
+                                                <div className="col-span-2">날짜 정보</div>
+                                                <div className="col-span-2 text-center">참석 인원</div>
+                                                <div className="col-span-2 text-center">급식 식수</div>
+                                                <div className="col-span-3 text-center">운영 기준 (정원 / 기본)</div>
+                                                <div className="col-span-2 text-center">잔여 수용량</div>
+                                                <div className="col-span-1 text-right">상태</div>
                                             </div>
                                             {filteredData.items.map((item, i) => {
                                                 const isOver = item.meals > item.capacity;
                                                 return (
                                                     <div key={i} onClick={() => isAdmin && toggleExcludedDate(item.dateStr)}
-                                                        className={`grid grid-cols-1 md:grid-cols-12 items-center px-6 py-3 rounded-2xl border transition-all ${isAdmin ? 'cursor-pointer hover:border-[#3A9AFF]/40 hover:shadow-md' : ''} ${!item.isOperating ? 'opacity-40 border-transparent off-day-pattern' : isOver ? 'bg-red-50/40 border-red-100 shadow-sm' : 'bg-white border-slate-50 shadow-sm'}`}>
-                                                        <div className="col-span-1 md:col-span-2 flex items-center gap-2">
+                                                        className={`grid grid-cols-1 md:grid-cols-12 items-center px-8 py-4 rounded-3xl border transition-all ${isAdmin ? 'cursor-pointer hover:border-[#3A9AFF]/60 hover:shadow-md' : ''} ${!item.isOperating ? 'opacity-40 border-transparent off-day-pattern' : isOver ? 'bg-red-50/40 border-red-200' : 'bg-white border-slate-50 custom-shadow'}`}>
+                                                        <div className="col-span-1 md:col-span-2 flex items-center gap-3">
                                                             <div className="flex flex-col">
-                                                                <span className={`text-sm font-black ${item.dayLabel === '일' ? 'text-red-500' : item.dayLabel === '토' ? 'text-[#3A9AFF]' : 'text-[#1C0770]'}`}>{item.dayLabel}요일</span>
-                                                                <p className="text-[9px] font-bold text-slate-400">{item.shortDate}</p>
+                                                                <span className={`text-base font-black ${item.dayLabel === '일' ? 'text-red-500' : item.dayLabel === '토' ? 'text-[#3A9AFF]' : 'text-[#1C0770]'}`}>{item.dayLabel}요일</span>
+                                                                <p className="text-[10px] font-bold text-slate-400">{item.shortDate}</p>
                                                             </div>
-                                                            {item.isOverridden && <div className="w-1.5 h-1.5 bg-[#F1FF5E] rounded-full border border-[#1C0770]/20" title="수정된 기준값"></div>}
+                                                            {item.isOverridden && <div className="w-2.5 h-2.5 bg-[#F1FF5E] rounded-full border-2 border-[#1C0770]/20 shadow-sm" title="개별 설정된 날짜"></div>}
                                                         </div>
-                                                        <div className="col-span-1 md:col-span-2 text-center font-black text-slate-600"><span className="text-[#261CC1]">{item.total}</span></div>
-                                                        <div className="col-span-1 md:col-span-2 text-center font-black text-slate-600"><span className="text-[#3A9AFF]">{item.meals}</span></div>
-                                                        <div className="col-span-1 md:col-span-2 text-center text-[10px] font-bold text-slate-400">
-                                                            {item.capacity} / {item.baseCount}
+                                                        <div className="col-span-1 md:col-span-2 text-center">
+                                                            <span className="text-xl font-black text-[#261CC1]">{item.total}</span>
+                                                            <span className="text-[10px] font-bold text-slate-400 ml-1">명</span>
                                                         </div>
-                                                        <div className="col-span-1 md:col-span-2 text-center font-black text-[10px]">
-                                                            <span className={item.remaining < 0 ? 'text-red-600 animate-pulse' : 'text-slate-400'}>{item.remaining} 여유</span>
+                                                        <div className="col-span-1 md:col-span-2 text-center">
+                                                            <span className="text-xl font-black text-[#3A9AFF]">{item.meals}</span>
+                                                            <span className="text-[10px] font-bold text-slate-400 ml-1">명</span>
                                                         </div>
-                                                        <div className="col-span-1 md:col-span-2 text-right">
-                                                            {item.isOperating ? <span className="text-[9px] bg-[#F1FF5E] text-[#1C0770] px-3 py-1 rounded-full font-black uppercase tracking-tighter border border-[#1C0770]/10">Open</span> : <span className="text-[9px] bg-slate-100 text-slate-400 px-3 py-1 rounded-full font-black uppercase tracking-tighter">Closed</span>}
+                                                        <div className="col-span-1 md:col-span-3 text-center flex justify-center gap-2">
+                                                            <div className="bg-slate-100 px-3 py-1 rounded-lg border border-slate-200 flex flex-col items-center">
+                                                                <span className="text-[8px] uppercase text-slate-400 font-black">정원</span>
+                                                                <span className="text-xs font-black text-[#1C0770]">{item.capacity}</span>
+                                                            </div>
+                                                            <div className="bg-slate-100 px-3 py-1 rounded-lg border border-slate-200 flex flex-col items-center">
+                                                                <span className="text-[8px] uppercase text-slate-400 font-black">기본</span>
+                                                                <span className="text-xs font-black text-[#1C0770]">{item.baseCount}</span>
+                                                            </div>
+                                                        </div>
+                                                        <div className="col-span-1 md:col-span-2 text-center">
+                                                            <div className={`px-4 py-2 rounded-2xl font-black text-xs border flex items-center justify-center gap-2 ${item.remaining < 0 ? 'bg-red-500 text-white border-red-600 shadow-lg shadow-red-200 animate-pulse' : 'bg-[#1C0770] text-[#F1FF5E] border-[#1C0770]'}`}>
+                                                                {item.remaining < 0 && <Icon name="AlertTriangle" size={14} color="white"/>}
+                                                                {item.remaining} 여유
+                                                            </div>
+                                                        </div>
+                                                        <div className="col-span-1 md:col-span-1 text-right">
+                                                            {item.isOperating ? 
+                                                                <div className="p-1.5 bg-[#F1FF5E] text-[#1C0770] rounded-lg inline-flex" title="운영 중"><Icon name="Check" size={16} strokeWidth={4}/></div> : 
+                                                                <div className="p-1.5 bg-slate-100 text-slate-400 rounded-lg inline-flex" title="미운영"><Icon name="X" size={16} strokeWidth={4}/></div>
+                                                            }
                                                         </div>
                                                     </div>
                                                 );
@@ -519,108 +521,6 @@
                                 </div>
                             )}
 
-                            {activeTab === 'admin' && (
-                                <div className="max-w-7xl mx-auto space-y-8 animate-fadeIn pb-8">
-                                    {!isAdmin ? (
-                                        <div className="max-w-md mx-auto bg-white p-12 rounded-[3rem] shadow-2xl border border-slate-100 text-center space-y-8 custom-shadow mt-12">
-                                            <div className="inline-flex p-5 bg-[#1C0770]/5 rounded-full text-[#1C0770]"><Icon name="Lock" size={40} strokeWidth={1.5} /></div>
-                                            <div className="space-y-1"><h2 className="text-xl font-black italic text-[#1C0770]">Security Access</h2><p className="text-slate-400 font-bold text-xs uppercase tracking-widest">Master Authorization Required</p></div>
-                                            <form onSubmit={handleAdminLogin} className="space-y-4">
-                                                <input type="password" placeholder="Pass: 1416" value={pwInput} onChange={e => setPwInput(e.target.value)} className="w-full p-4 bg-[#f8fafc] border-2 border-transparent rounded-2xl text-center font-black text-xl focus:border-[#3A9AFF] outline-none transition shadow-inner tracking-widest" />
-                                                <button type="submit" className="w-full bg-[#1C0770] text-white py-4 rounded-2xl font-black hover:bg-[#261CC1] shadow-xl transition-all text-xs uppercase tracking-widest">Login</button>
-                                            </form>
-                                        </div>
-                                    ) : (
-                                        <div className="space-y-8">
-                                            <div className="flex items-center justify-between">
-                                                <div className="flex items-center gap-3">
-                                                    <h2 className="text-2xl font-black italic text-[#1C0770]">Master Panel</h2>
-                                                    <span className="px-3 py-1 bg-[#F1FF5E] text-[#1C0770] rounded-full text-[9px] font-black uppercase tracking-tighter">Authorized</span>
-                                                </div>
-                                                <button onClick={() => { setIsAdmin(false); showMsg("로그아웃되었습니다."); }} className="px-6 py-2 bg-white text-red-600 rounded-xl text-[10px] font-black hover:bg-red-50 transition uppercase border border-red-100 shadow-sm active:scale-95">Logout</button>
-                                            </div>
-                                            
-                                            <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
-                                                {/* 1. 전역 기본 설정 */}
-                                                <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-100 space-y-6 custom-shadow h-fit">
-                                                    <div className="flex items-center space-x-3 pb-4 border-b border-slate-50"><Icon name="Save" size={20} color="#3A9AFF" /><h3 className="text-lg font-black text-[#1C0770]">전역 기본값</h3></div>
-                                                    <div className="space-y-4">
-                                                        <div className="space-y-1.5"><label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Default Capacity</label><input type="number" value={baseSettings.maxCapacity} onChange={e => setBaseSettings({...baseSettings, maxCapacity: Number(e.target.value)})} className="w-full p-3.5 bg-[#f8fafc] rounded-xl font-black text-base text-[#261CC1] shadow-inner border-none" /></div>
-                                                        <div className="space-y-1.5"><label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Default Base Count</label><input type="number" value={baseSettings.baseMealCount} onChange={e => setBaseSettings({...baseSettings, baseMealCount: Number(e.target.value)})} className="w-full p-3.5 bg-[#f8fafc] rounded-xl font-black text-base text-[#3A9AFF] shadow-inner border-none" /></div>
-                                                        <div className="space-y-1.5">
-                                                            <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Workdays</label>
-                                                            <div className="flex gap-1">
-                                                                {WEEKDAYS.map((day, i) => (<button key={i} onClick={() => { const newDays = [...baseSettings.operatingDays]; newDays[i] = !newDays[i]; setBaseSettings({...baseSettings, operatingDays: newDays}); }} className={`flex-1 py-3 rounded-lg text-[10px] font-black transition-all ${baseSettings.operatingDays[i] ? 'bg-[#1C0770] text-white shadow-lg' : 'bg-slate-50 text-slate-300'}`}>{day}</button>))}
-                                                            </div>
-                                                        </div>
-                                                        <button onClick={saveSettings} disabled={loading} className="w-full bg-[#1C0770] text-white py-4 rounded-xl font-black shadow-xl hover:bg-[#261CC1] transition-all text-xs flex items-center justify-center gap-3">
-                                                            <Icon name={loading ? "RefreshCcw" : "Check"} size={16} color={loading ? "#3A9AFF" : "#F1FF5E"} className={loading ? "animate-spin" : ""} />
-                                                            <span>기본값 저장</span>
-                                                        </button>
-                                                    </div>
-                                                </div>
-
-                                                {/* 2. 특정 일자별 개별 설정 */}
-                                                <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-100 space-y-6 custom-shadow h-fit">
-                                                    <div className="flex items-center space-x-3 pb-4 border-b border-slate-50"><Icon name="Calendar" size={20} color="#261CC1" /><h3 className="text-lg font-black text-[#1C0770]">특정 일자 개별 설정</h3></div>
-                                                    <form onSubmit={handleSaveSpecificOverride} className="space-y-4">
-                                                        <div className="space-y-1.5"><label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Target Date</label><input type="date" required value={specificOverride.date} onChange={e => setSpecificOverride({...specificOverride, date: e.target.value})} className="w-full p-3.5 bg-[#f8fafc] rounded-xl font-bold text-sm shadow-inner border-none" /></div>
-                                                        <div className="grid grid-cols-2 gap-3">
-                                                            <div className="space-y-1.5"><label className="text-[9px] font-black text-[#261CC1] uppercase ml-1 tracking-tighter">Capacity</label><input type="number" value={specificOverride.capacity} onChange={e => setSpecificOverride({...specificOverride, capacity: e.target.value})} className="w-full p-3.5 bg-[#f8fafc] rounded-xl font-black text-base shadow-inner border-none" /></div>
-                                                            <div className="space-y-1.5"><label className="text-[9px] font-black text-[#3A9AFF] uppercase ml-1 tracking-tighter">Base Count</label><input type="number" value={specificOverride.baseCount} onChange={e => setSpecificOverride({...specificOverride, baseCount: e.target.value})} className="w-full p-3.5 bg-[#f8fafc] rounded-xl font-black text-base shadow-inner border-none" /></div>
-                                                        </div>
-                                                        <button type="submit" disabled={loading} className="w-full bg-[#261CC1] text-white py-4 rounded-xl font-black shadow-xl hover:bg-[#1C0770] transition-all text-xs flex items-center justify-center gap-3">
-                                                            <Icon name="PlusCircle" size={16} color="#F1FF5E" />
-                                                            <span>일자별 적용</span>
-                                                        </button>
-                                                    </form>
-                                                </div>
-
-                                                {/* 3. 기간/요일별 일괄 설정 */}
-                                                <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-100 space-y-6 custom-shadow h-fit">
-                                                    <div className="flex items-center space-x-3 pb-4 border-b border-slate-50"><Icon name="ListOrdered" size={20} color="#F1FF5E" /><h3 className="text-lg font-black text-[#1C0770]">기간/요일 일괄 설정</h3></div>
-                                                    <form onSubmit={handleSaveRangeOverride} className="space-y-4">
-                                                        <div className="grid grid-cols-2 gap-3">
-                                                            <div className="space-y-1.5"><label className="text-[9px] font-black text-slate-400 uppercase ml-1 tracking-tighter">Start Date</label><input type="date" required value={rangeOverride.startDate} onChange={e => setRangeOverride({...rangeOverride, startDate: e.target.value})} className="w-full p-3 bg-[#f8fafc] rounded-xl font-bold text-[11px] shadow-inner border-none" /></div>
-                                                            <div className="space-y-1.5"><label className="text-[9px] font-black text-slate-400 uppercase ml-1 tracking-tighter">End Date</label><input type="date" required value={rangeOverride.endDate} onChange={e => setRangeOverride({...rangeOverride, endDate: e.target.value})} className="w-full p-3 bg-[#f8fafc] rounded-xl font-bold text-[11px] shadow-inner border-none" /></div>
-                                                        </div>
-                                                        <div className="space-y-1.5">
-                                                            <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Target Weekdays</label>
-                                                            <div className="flex gap-1">
-                                                                {WEEKDAYS.map((day, i) => (<button type="button" key={i} onClick={() => { const newDays = [...rangeOverride.days]; newDays[i] = !newDays[i]; setRangeOverride({...rangeOverride, days: newDays}); }} className={`flex-1 py-2.5 rounded-lg text-[9px] font-black transition-all ${rangeOverride.days[i] ? 'bg-[#3A9AFF] text-white shadow-md' : 'bg-slate-50 text-slate-300'}`}>{day}</button>))}
-                                                            </div>
-                                                        </div>
-                                                        <div className="grid grid-cols-2 gap-3">
-                                                            <div className="space-y-1.5"><label className="text-[9px] font-black text-[#261CC1] uppercase ml-1 tracking-tighter">Capacity</label><input type="number" value={rangeOverride.capacity} onChange={e => setRangeOverride({...rangeOverride, capacity: e.target.value})} className="w-full p-3.5 bg-[#f8fafc] rounded-xl font-black text-base shadow-inner border-none" /></div>
-                                                            <div className="space-y-1.5"><label className="text-[9px] font-black text-[#3A9AFF] uppercase ml-1 tracking-tighter">Base Count</label><input type="number" value={rangeOverride.baseCount} onChange={e => setRangeOverride({...rangeOverride, baseCount: e.target.value})} className="w-full p-3.5 bg-[#f8fafc] rounded-xl font-black text-base shadow-inner border-none" /></div>
-                                                        </div>
-                                                        <button type="submit" disabled={loading} className="w-full bg-[#3A9AFF] text-white py-4 rounded-xl font-black shadow-xl hover:bg-[#261CC1] transition-all text-xs flex items-center justify-center gap-3">
-                                                            <Icon name="RefreshCcw" size={16} color="#F1FF5E" />
-                                                            <span>일괄 업데이트</span>
-                                                        </button>
-                                                    </form>
-                                                </div>
-                                            </div>
-
-                                            {/* 기존 휴무일 제어 섹션은 대시보드 리스트 클릭 방식으로 유지 */}
-                                            <div className="bg-white p-8 rounded-[3rem] shadow-sm border border-slate-100 custom-shadow flex items-center justify-between">
-                                                <div className="flex items-center gap-4">
-                                                    <div className="p-3 bg-[#F1FF5E]/20 rounded-2xl"><Icon name="Info" size={24} color="#1C0770" /></div>
-                                                    <div>
-                                                        <h4 className="font-black text-[#1C0770]">Live 제어 안내</h4>
-                                                        <p className="text-xs text-slate-400 font-bold">대시보드 리스트의 날짜 행을 클릭하면 해당 일자의 휴무 여부를 즉시 전환할 수 있습니다.</p>
-                                                    </div>
-                                                </div>
-                                                <div className="flex items-center gap-2 text-[#3A9AFF] font-black text-[10px] uppercase italic tracking-widest animate-pulse">
-                                                    <div className="w-2 h-2 bg-[#F1FF5E] rounded-full"></div> Master Active
-                                                </div>
-                                            </div>
-                                        </div>
-                                    )}
-                                </div>
-                            )}
-
-                            {/* 나머지 탭 생략... (List, Add 등) */}
                             {activeTab === 'add' && (
                                 <div className="max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-2 gap-8 animate-fadeIn pb-8">
                                     <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-100 space-y-6 flex flex-col custom-shadow h-fit">
@@ -633,31 +533,30 @@
                                                 <input type="date" required className="p-3.5 bg-slate-50 rounded-xl font-bold border-none outline-none shadow-inner text-xs" value={formData.event_date} onChange={e => setFormData({...formData, event_date: e.target.value})} />
                                                 <select className="p-3.5 bg-slate-50 rounded-xl font-bold border-none outline-none shadow-inner cursor-pointer text-xs" value={formData.department} onChange={e => setFormData({...formData, department: e.target.value})}>{["기획부", "창의부", "정보부", "총무부"].map(d => <option key={d} value={d}>{d}</option>)}</select>
                                             </div>
-                                            <input type="text" required placeholder="행사 명칭 입력" className="w-full p-3.5 bg-slate-50 rounded-xl font-bold border-none outline-none shadow-inner text-xs" value={formData.event_name} onChange={e => setFormData({...formData, event_name: e.target.value})} />
+                                            <input type="text" required placeholder="행사 명칭을 입력하세요" className="w-full p-3.5 bg-slate-50 rounded-xl font-bold border-none outline-none shadow-inner text-xs" value={formData.event_name} onChange={e => setFormData({...formData, event_name: e.target.value})} />
                                             <div className="grid grid-cols-2 gap-4">
-                                                <div className="space-y-1"><label className="text-[9px] px-2 font-black text-slate-400 uppercase">방문인원</label><input type="number" className="w-full p-3.5 bg-slate-50 rounded-xl font-black shadow-inner border-none outline-none text-sm" value={formData.total_participants} onChange={e => setFormData({...formData, total_participants: Number(e.target.value)})} /></div>
-                                                <div className="space-y-1"><label className="text-[9px] px-2 font-black text-[#3A9AFF] uppercase">급식인원</label><input type="number" className="w-full p-3.5 bg-slate-50 rounded-xl font-black text-[#261CC1] shadow-inner border-none outline-none text-sm" value={formData.meal_participants} onChange={e => setFormData({...formData, meal_participants: Number(e.target.value)})} /></div>
+                                                <div className="space-y-1"><label className="text-[9px] px-2 font-black text-slate-400 uppercase">총 참석 인원</label><input type="number" className="w-full p-3.5 bg-slate-50 rounded-xl font-black shadow-inner border-none outline-none text-sm" value={formData.total_participants} onChange={e => setFormData({...formData, total_participants: Number(e.target.value)})} /></div>
+                                                <div className="space-y-1"><label className="text-[9px] px-2 font-black text-[#3A9AFF] uppercase">급식 희망 인원</label><input type="number" className="w-full p-3.5 bg-slate-50 rounded-xl font-black text-[#261CC1] shadow-inner border-none outline-none text-sm" value={formData.meal_participants} onChange={e => setFormData({...formData, meal_participants: Number(e.target.value)})} /></div>
                                             </div>
                                             <button type="submit" className="w-full bg-[#1C0770] text-white py-4 rounded-2xl font-black shadow-lg hover:bg-[#261CC1] transition-all flex items-center justify-center space-x-3 text-sm active:scale-[0.98]">
                                                 <Icon name="PlusCircle" size={18} color="#F1FF5E" />
-                                                <span>데이터 저장</span>
+                                                <span>신규 내역 저장</span>
                                             </button>
                                         </form>
                                     </div>
-
                                     <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-100 space-y-6 flex flex-col custom-shadow h-fit">
                                         <div className="flex items-center space-x-3 pb-4 border-b border-slate-50">
                                             <Icon name="FileSpreadsheet" size={22} color="#261CC1" />
                                             <h3 className="text-lg font-black text-[#1C0770]">엑셀 일괄 업로드</h3>
                                         </div>
                                         <div className="bg-[#1C0770]/5 rounded-2xl p-5 space-y-2 border border-[#1C0770]/5">
-                                            <p className="text-[10px] text-slate-600 font-bold">1. 첫 번째 시트의 헤더를 읽습니다.</p>
-                                            <p className="text-[10px] text-slate-600 font-bold">2. 필수 컬럼: 날짜, 부서, 행사명, 참석인원, 급식인원</p>
+                                            <p className="text-[10px] text-slate-600 font-bold">1. 엑셀 파일의 첫 번째 시트를 기준으로 데이터를 읽습니다.</p>
+                                            <p className="text-[10px] text-slate-600 font-bold">2. 필수 열 이름: 날짜, 부서, 행사명, 참석인원, 급식인원</p>
                                         </div>
                                         <div className="p-8 border-2 border-dashed border-[#3A9AFF]/20 rounded-2xl bg-slate-50 flex flex-col items-center justify-center text-center space-y-4 hover:border-[#3A9AFF]/60 transition-all group">
                                             <div className="p-4 bg-white rounded-xl shadow-sm text-[#3A9AFF] group-hover:scale-110 transition-transform"><Icon name="Upload" size={32} /></div>
                                             <input type="file" accept=".xlsx, .xls" ref={fileInputRef} onChange={handleExcelUpload} className="hidden" id="excel-upload" />
-                                            <label htmlFor="excel-upload" className="px-8 py-3 bg-[#1C0770] text-white rounded-xl font-black cursor-pointer hover:bg-[#261CC1] transition-all text-[10px] uppercase tracking-widest shadow-lg">Upload Excel</label>
+                                            <label htmlFor="excel-upload" className="px-8 py-3 bg-[#1C0770] text-white rounded-xl font-black cursor-pointer hover:bg-[#261CC1] transition-all text-[10px] uppercase tracking-widest shadow-lg">엑셀 파일 선택</label>
                                         </div>
                                     </div>
                                 </div>
@@ -667,23 +566,23 @@
                                 <div className="max-w-7xl mx-auto animate-fadeIn pb-8">
                                     <div className="bg-white rounded-[2.5rem] shadow-sm border border-slate-100 overflow-hidden custom-shadow">
                                         <div className="p-6 px-10 flex items-center justify-between border-b border-slate-50">
-                                            <h2 className="text-xl font-black italic text-[#1C0770] uppercase">Event Archive</h2>
-                                            <span className="text-[10px] font-black text-[#261CC1] bg-slate-50 px-3 py-1 rounded-lg">Total: {events.length}</span>
+                                            <h2 className="text-xl font-black text-[#1C0770] uppercase">행사 기록 보관소</h2>
+                                            <span className="text-[10px] font-black text-[#261CC1] bg-slate-50 px-3 py-1 rounded-lg">전체 내역: {events.length}건</span>
                                         </div>
                                         <div className="overflow-y-auto max-h-[550px]">
                                             <table className="w-full text-left">
                                                 <thead className="bg-[#1C0770] text-white sticky top-0 z-10">
                                                     <tr>
-                                                        <th className="px-8 py-4 text-[10px] font-black uppercase text-center">Date</th>
-                                                        <th className="px-8 py-4 text-[10px] font-black uppercase">Dept</th>
-                                                        <th className="px-8 py-4 text-[10px] font-black uppercase">Event</th>
-                                                        <th className="px-8 py-4 text-[10px] font-black uppercase text-center">Meals</th>
-                                                        <th className="px-8 py-4 text-[10px] font-black uppercase text-center">Action</th>
+                                                        <th className="px-8 py-4 text-[10px] font-black uppercase text-center">행사 일자</th>
+                                                        <th className="px-8 py-4 text-[10px] font-black uppercase">담당 부서</th>
+                                                        <th className="px-8 py-4 text-[10px] font-black uppercase">행사 명칭</th>
+                                                        <th className="px-8 py-4 text-[10px] font-black uppercase text-center">식수</th>
+                                                        <th className="px-8 py-4 text-[10px] font-black uppercase text-center">삭제</th>
                                                     </tr>
                                                 </thead>
                                                 <tbody className="divide-y divide-slate-50">
                                                     {events.length === 0 ? (
-                                                        <tr><td colSpan="5" className="px-8 py-20 text-center text-slate-300 font-bold italic">No Data</td></tr>
+                                                        <tr><td colSpan="5" className="px-8 py-20 text-center text-slate-300 font-bold italic">등록된 내역이 없습니다.</td></tr>
                                                     ) : (
                                                         [...events].reverse().map(ev => (
                                                             <tr key={ev.id} className="hover:bg-slate-50/50 transition">
@@ -699,6 +598,106 @@
                                             </table>
                                         </div>
                                     </div>
+                                </div>
+                            )}
+
+                            {activeTab === 'admin' && (
+                                <div className="max-w-7xl mx-auto space-y-8 animate-fadeIn pb-8">
+                                    {!isAdmin ? (
+                                        <div className="max-w-md mx-auto bg-white p-12 rounded-[3rem] shadow-2xl border border-slate-100 text-center space-y-8 custom-shadow mt-12">
+                                            <div className="inline-flex p-5 bg-[#1C0770]/5 rounded-full text-[#1C0770]"><Icon name="Lock" size={40} strokeWidth={1.5} /></div>
+                                            <div className="space-y-1"><h2 className="text-xl font-black italic text-[#1C0770]">시스템 보안 인증</h2><p className="text-slate-400 font-bold text-xs uppercase tracking-widest">Master Authorization Required</p></div>
+                                            <form onSubmit={handleAdminLogin} className="space-y-4">
+                                                <input type="password" placeholder="비밀번호 입력 (1416)" value={pwInput} onChange={e => setPwInput(e.target.value)} className="w-full p-4 bg-[#f8fafc] border-2 border-transparent rounded-2xl text-center font-black text-xl focus:border-[#3A9AFF] outline-none transition shadow-inner tracking-widest" />
+                                                <button type="submit" className="w-full bg-[#1C0770] text-white py-4 rounded-2xl font-black hover:bg-[#261CC1] shadow-xl transition-all text-xs uppercase tracking-widest">관리자 인증</button>
+                                            </form>
+                                        </div>
+                                    ) : (
+                                        <div className="space-y-8">
+                                            <div className="flex items-center justify-between">
+                                                <div className="flex items-center gap-3">
+                                                    <h2 className="text-2xl font-black italic text-[#1C0770]">Master Panel</h2>
+                                                    <span className="px-3 py-1 bg-[#F1FF5E] text-[#1C0770] rounded-full text-[9px] font-black uppercase tracking-tighter text-center">인증됨</span>
+                                                </div>
+                                                <button onClick={() => { setIsAdmin(false); showMsg("로그아웃되었습니다."); }} className="px-6 py-2 bg-white text-red-600 rounded-xl text-[10px] font-black hover:bg-red-50 transition uppercase border border-red-100 shadow-sm active:scale-95">로그아웃</button>
+                                            </div>
+                                            
+                                            <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
+                                                {/* 1. 전역 기본 설정 */}
+                                                <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-100 space-y-6 custom-shadow h-fit">
+                                                    <div className="flex items-center space-x-3 pb-4 border-b border-slate-50"><Icon name="Save" size={20} color="#3A9AFF" /><h3 className="text-lg font-black text-[#1C0770]">운영 기본값 설정</h3></div>
+                                                    <div className="space-y-4">
+                                                        <div className="space-y-1.5"><label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">상시 수용 정원</label><input type="number" value={baseSettings.maxCapacity} onChange={e => setBaseSettings({...baseSettings, maxCapacity: Number(e.target.value)})} className="w-full p-3.5 bg-[#f8fafc] rounded-xl font-black text-base text-[#261CC1] shadow-inner border-none" /></div>
+                                                        <div className="space-y-1.5"><label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">상시 기본 식수</label><input type="number" value={baseSettings.baseMealCount} onChange={e => setBaseSettings({...baseSettings, baseMealCount: Number(e.target.value)})} className="w-full p-3.5 bg-[#f8fafc] rounded-xl font-black text-base text-[#3A9AFF] shadow-inner border-none" /></div>
+                                                        <div className="space-y-1.5">
+                                                            <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">정기 운영 요일</label>
+                                                            <div className="flex gap-1">
+                                                                {WEEKDAYS.map((day, i) => (<button key={i} onClick={() => { const newDays = [...baseSettings.operatingDays]; newDays[i] = !newDays[i]; setBaseSettings({...baseSettings, operatingDays: newDays}); }} className={`flex-1 py-3 rounded-lg text-[10px] font-black transition-all ${baseSettings.operatingDays[i] ? 'bg-[#1C0770] text-white shadow-lg' : 'bg-slate-50 text-slate-300'}`}>{day}</button>))}
+                                                            </div>
+                                                        </div>
+                                                        <button onClick={saveSettings} disabled={loading} className="w-full bg-[#1C0770] text-white py-4 rounded-xl font-black shadow-xl hover:bg-[#261CC1] transition-all text-xs flex items-center justify-center gap-3">
+                                                            <Icon name={loading ? "RefreshCcw" : "Check"} size={16} color={loading ? "#3A9AFF" : "#F1FF5E"} className={loading ? "animate-spin" : ""} />
+                                                            <span>기본값 저장</span>
+                                                        </button>
+                                                    </div>
+                                                </div>
+
+                                                {/* 2. 특정 일자별 개별 설정 */}
+                                                <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-100 space-y-6 custom-shadow h-fit">
+                                                    <div className="flex items-center space-x-3 pb-4 border-b border-slate-50"><Icon name="Calendar" size={20} color="#261CC1" /><h3 className="text-lg font-black text-[#1C0770]">특정 날짜 개별 설정</h3></div>
+                                                    <form onSubmit={handleSaveSpecificOverride} className="space-y-4">
+                                                        <div className="space-y-1.5"><label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">변경 대상 날짜</label><input type="date" required value={specificOverride.date} onChange={e => setSpecificOverride({...specificOverride, date: e.target.value})} className="w-full p-3.5 bg-[#f8fafc] rounded-xl font-bold text-sm shadow-inner border-none" /></div>
+                                                        <div className="grid grid-cols-2 gap-3">
+                                                            <div className="space-y-1.5"><label className="text-[9px] font-black text-[#261CC1] uppercase ml-1 tracking-tighter">변경 정원</label><input type="number" value={specificOverride.capacity} onChange={e => setSpecificOverride({...specificOverride, capacity: e.target.value})} className="w-full p-3.5 bg-[#f8fafc] rounded-xl font-black text-base shadow-inner border-none" /></div>
+                                                            <div className="space-y-1.5"><label className="text-[9px] font-black text-[#3A9AFF] uppercase ml-1 tracking-tighter">변경 식수</label><input type="number" value={specificOverride.baseCount} onChange={e => setSpecificOverride({...specificOverride, baseCount: e.target.value})} className="w-full p-3.5 bg-[#f8fafc] rounded-xl font-black text-base shadow-inner border-none" /></div>
+                                                        </div>
+                                                        <button type="submit" disabled={loading} className="w-full bg-[#261CC1] text-white py-4 rounded-xl font-black shadow-xl hover:bg-[#1C0770] transition-all text-xs flex items-center justify-center gap-3">
+                                                            <Icon name="PlusCircle" size={16} color="#F1FF5E" />
+                                                            <span>일자별 적용</span>
+                                                        </button>
+                                                    </form>
+                                                </div>
+
+                                                {/* 3. 기간/요일별 일괄 설정 */}
+                                                <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-100 space-y-6 custom-shadow h-fit">
+                                                    <div className="flex items-center space-x-3 pb-4 border-b border-slate-50"><Icon name="ListOrdered" size={20} color="#F1FF5E" /><h3 className="text-lg font-black text-[#1C0770]">기간/요일 일괄 설정</h3></div>
+                                                    <form onSubmit={handleSaveRangeOverride} className="space-y-4">
+                                                        <div className="grid grid-cols-2 gap-3">
+                                                            <div className="space-y-1.5"><label className="text-[9px] font-black text-slate-400 uppercase ml-1 tracking-tighter">시작일</label><input type="date" required value={rangeOverride.startDate} onChange={e => setRangeOverride({...rangeOverride, startDate: e.target.value})} className="w-full p-3 bg-[#f8fafc] rounded-xl font-bold text-[11px] shadow-inner border-none" /></div>
+                                                            <div className="space-y-1.5"><label className="text-[9px] font-black text-slate-400 uppercase ml-1 tracking-tighter">종료일</label><input type="date" required value={rangeOverride.endDate} onChange={e => setRangeOverride({...rangeOverride, endDate: e.target.value})} className="w-full p-3 bg-[#f8fafc] rounded-xl font-bold text-[11px] shadow-inner border-none" /></div>
+                                                        </div>
+                                                        <div className="space-y-1.5">
+                                                            <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">대상 요일 선택</label>
+                                                            <div className="flex gap-1">
+                                                                {WEEKDAYS.map((day, i) => (<button type="button" key={i} onClick={() => { const newDays = [...rangeOverride.days]; newDays[i] = !newDays[i]; setRangeOverride({...rangeOverride, days: newDays}); }} className={`flex-1 py-2.5 rounded-lg text-[9px] font-black transition-all ${rangeOverride.days[i] ? 'bg-[#3A9AFF] text-white shadow-md' : 'bg-slate-50 text-slate-300'}`}>{day}</button>))}
+                                                            </div>
+                                                        </div>
+                                                        <div className="grid grid-cols-2 gap-3">
+                                                            <div className="space-y-1.5"><label className="text-[9px] font-black text-[#261CC1] uppercase ml-1 tracking-tighter">일괄 정원</label><input type="number" value={rangeOverride.capacity} onChange={e => setRangeOverride({...rangeOverride, capacity: e.target.value})} className="w-full p-3.5 bg-[#f8fafc] rounded-xl font-black text-base shadow-inner border-none" /></div>
+                                                            <div className="space-y-1.5"><label className="text-[9px] font-black text-[#3A9AFF] uppercase ml-1 tracking-tighter">일괄 식수</label><input type="number" value={rangeOverride.baseCount} onChange={e => setRangeOverride({...rangeOverride, baseCount: e.target.value})} className="w-full p-3.5 bg-[#f8fafc] rounded-xl font-black text-base shadow-inner border-none" /></div>
+                                                        </div>
+                                                        <button type="submit" disabled={loading} className="w-full bg-[#3A9AFF] text-white py-4 rounded-xl font-black shadow-xl hover:bg-[#261CC1] transition-all text-xs flex items-center justify-center gap-3">
+                                                            <Icon name="RefreshCcw" size={16} color="#F1FF5E" />
+                                                            <span>일괄 업데이트</span>
+                                                        </button>
+                                                    </form>
+                                                </div>
+                                            </div>
+
+                                            <div className="bg-white p-8 rounded-[3rem] shadow-sm border border-slate-100 custom-shadow flex items-center justify-between">
+                                                <div className="flex items-center gap-4">
+                                                    <div className="p-3 bg-[#F1FF5E]/20 rounded-2xl"><Icon name="Info" size={24} color="#1C0770" /></div>
+                                                    <div>
+                                                        <h4 className="font-black text-[#1C0770]">운영 제어 안내</h4>
+                                                        <p className="text-xs text-slate-400 font-bold">현황 모니터링의 날짜 목록을 클릭하면 해당 일자의 휴무 여부를 즉시 전환할 수 있습니다.</p>
+                                                    </div>
+                                                </div>
+                                                <div className="flex items-center gap-2 text-[#3A9AFF] font-black text-[10px] uppercase italic tracking-widest animate-pulse">
+                                                    <div className="w-2 h-2 bg-[#F1FF5E] rounded-full"></div> 마스터 모드 활성중
+                                                </div>
+                                            </div>
+                                        </div>
+                                    )}
                                 </div>
                             )}
                         </div>
